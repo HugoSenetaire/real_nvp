@@ -1,1 +1,1 @@
-from models.resnet.resnet import ResNet
+from .resnet import ResNet

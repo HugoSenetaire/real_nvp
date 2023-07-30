@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from models.real_nvp.coupling_layer import CouplingLayer, MaskType
-from util import squeeze_2x2
+from .coupling_layer import CouplingLayer, MaskType
+from ...util import squeeze_2x2
 
 
 class RealNVP(nn.Module):
@@ -21,10 +21,11 @@ class RealNVP(nn.Module):
         num_blocks (int): Number of residual blocks in the s and t network of
         `Coupling` layers.
     """
-    def __init__(self, num_scales=2, in_channels=3, mid_channels=64, num_blocks=8):
+    def __init__(self, num_scales=2, in_channels=3, mid_channels=64, num_blocks=8, pre_process=True):
         super(RealNVP, self).__init__()
         # Register data_constraint to pre-process images, not learnable
         self.register_buffer('data_constraint', torch.tensor([0.9], dtype=torch.float32))
+        self._pre_process = pre_process
 
         self.flows = _RealNVP(0, num_scales, in_channels, mid_channels, num_blocks)
 
@@ -32,12 +33,15 @@ class RealNVP(nn.Module):
         sldj = None
         if not reverse:
             # Expect inputs in [0, 1]
-            if x.min() < 0 or x.max() > 1:
-                raise ValueError('Expected x in [0, 1], got x with min/max {}/{}'
-                                 .format(x.min(), x.max()))
+            if self._pre_process:
+                if x.min() < 0 or x.max() > 1:
+                    raise ValueError('Expected x in [0, 1], got x with min/max {}/{}'
+                                    .format(x.min(), x.max()))
 
-            # De-quantize and convert to logits
-            x, sldj = self._pre_process(x)
+                # De-quantize and convert to logits
+                x, sldj = self._pre_process(x)
+            else :
+                sldj = torch.zeros(x.shape[0], device=x.device)
 
         x, sldj = self.flows(x, sldj, reverse)
 
