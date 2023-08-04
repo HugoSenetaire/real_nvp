@@ -25,7 +25,7 @@ class RealNVP(nn.Module):
         super(RealNVP, self).__init__()
         # Register data_constraint to pre-process images, not learnable
         self.register_buffer('data_constraint', torch.tensor([0.9], dtype=torch.float32))
-        self._pre_process = pre_process
+        self.to_pre_process = pre_process
 
         self.flows = _RealNVP(0, num_scales, in_channels, mid_channels, num_blocks)
 
@@ -33,7 +33,7 @@ class RealNVP(nn.Module):
         sldj = None
         if not reverse:
             # Expect inputs in [0, 1]
-            if self._pre_process:
+            if self.to_pre_process:
                 if x.min() < 0 or x.max() > 1:
                     raise ValueError('Expected x in [0, 1], got x with min/max {}/{}'
                                     .format(x.min(), x.max()))
