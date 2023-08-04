@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .coupling_layer import CouplingLayer, MaskType
 from ...util import squeeze_2x2
+from .coupling_layer import CouplingLayer, MaskType
 
 
 class RealNVP(nn.Module):
@@ -21,10 +21,20 @@ class RealNVP(nn.Module):
         num_blocks (int): Number of residual blocks in the s and t network of
         `Coupling` layers.
     """
-    def __init__(self, num_scales=2, in_channels=3, mid_channels=64, num_blocks=8, pre_process=True):
+
+    def __init__(
+        self,
+        num_scales=2,
+        in_channels=3,
+        mid_channels=64,
+        num_blocks=8,
+        pre_process=True,
+    ):
         super(RealNVP, self).__init__()
         # Register data_constraint to pre-process images, not learnable
-        self.register_buffer('data_constraint', torch.tensor([0.9], dtype=torch.float32))
+        self.register_buffer(
+            "data_constraint", torch.tensor([0.9], dtype=torch.float32)
+        )
         self.to_pre_process = pre_process
 
         self.flows = _RealNVP(0, num_scales, in_channels, mid_channels, num_blocks)
@@ -35,12 +45,15 @@ class RealNVP(nn.Module):
             # Expect inputs in [0, 1]
             if self.to_pre_process:
                 if x.min() < 0 or x.max() > 1:
-                    raise ValueError('Expected x in [0, 1], got x with min/max {}/{}'
-                                    .format(x.min(), x.max()))
+                    raise ValueError(
+                        "Expected x in [0, 1], got x with min/max {}/{}".format(
+                            x.min(), x.max()
+                        )
+                    )
 
                 # De-quantize and convert to logits
                 x, sldj = self._pre_process(x)
-            else :
+            else:
                 sldj = torch.zeros(x.shape[0], device=x.device)
 
         x, sldj = self.flows(x, sldj, reverse)
@@ -60,14 +73,19 @@ class RealNVP(nn.Module):
             - Dequantization: https://arxiv.org/abs/1511.01844, Section 3.1
             - Modeling logits: https://arxiv.org/abs/1605.08803, Section 4.1
         """
-        y = (x * 255. + torch.rand_like(x)) / 256.
+        y = (x * 255.0 + torch.rand_like(x)) / 256.0
         y = (2 * y - 1) * self.data_constraint
         y = (y + 1) / 2
-        y = y.log() - (1. - y).log()
+        y = y.log() - (1.0 - y).log()
 
         # Save log-determinant of Jacobian of initial transform
-        ldj = F.softplus(y) + F.softplus(-y) \
-            - F.softplus((1. - self.data_constraint).log() - self.data_constraint.log())
+        ldj = (
+            F.softplus(y)
+            + F.softplus(-y)
+            - F.softplus(
+                (1.0 - self.data_constraint).log() - self.data_constraint.log()
+            )
+        )
         sldj = ldj.view(ldj.size(0), -1).sum(-1)
 
         return y, sldj
@@ -87,27 +105,77 @@ class _RealNVP(nn.Module):
         num_blocks (int): Number of residual blocks in the s and t network of
             `Coupling` layers.
     """
+
     def __init__(self, scale_idx, num_scales, in_channels, mid_channels, num_blocks):
         super(_RealNVP, self).__init__()
 
         self.is_last_block = scale_idx == num_scales - 1
 
-        self.in_couplings = nn.ModuleList([
-            CouplingLayer(in_channels, mid_channels, num_blocks, MaskType.CHECKERBOARD, reverse_mask=False),
-            CouplingLayer(in_channels, mid_channels, num_blocks, MaskType.CHECKERBOARD, reverse_mask=True),
-            CouplingLayer(in_channels, mid_channels, num_blocks, MaskType.CHECKERBOARD, reverse_mask=False)
-        ])
+        self.in_couplings = nn.ModuleList(
+            [
+                CouplingLayer(
+                    in_channels,
+                    mid_channels,
+                    num_blocks,
+                    MaskType.CHECKERBOARD,
+                    reverse_mask=False,
+                ),
+                CouplingLayer(
+                    in_channels,
+                    mid_channels,
+                    num_blocks,
+                    MaskType.CHECKERBOARD,
+                    reverse_mask=True,
+                ),
+                CouplingLayer(
+                    in_channels,
+                    mid_channels,
+                    num_blocks,
+                    MaskType.CHECKERBOARD,
+                    reverse_mask=False,
+                ),
+            ]
+        )
 
         if self.is_last_block:
             self.in_couplings.append(
-                CouplingLayer(in_channels, mid_channels, num_blocks, MaskType.CHECKERBOARD, reverse_mask=True))
+                CouplingLayer(
+                    in_channels,
+                    mid_channels,
+                    num_blocks,
+                    MaskType.CHECKERBOARD,
+                    reverse_mask=True,
+                )
+            )
         else:
-            self.out_couplings = nn.ModuleList([
-                CouplingLayer(4 * in_channels, 2 * mid_channels, num_blocks, MaskType.CHANNEL_WISE, reverse_mask=False),
-                CouplingLayer(4 * in_channels, 2 * mid_channels, num_blocks, MaskType.CHANNEL_WISE, reverse_mask=True),
-                CouplingLayer(4 * in_channels, 2 * mid_channels, num_blocks, MaskType.CHANNEL_WISE, reverse_mask=False)
-            ])
-            self.next_block = _RealNVP(scale_idx + 1, num_scales, 2 * in_channels, 2 * mid_channels, num_blocks)
+            self.out_couplings = nn.ModuleList(
+                [
+                    CouplingLayer(
+                        4 * in_channels,
+                        2 * mid_channels,
+                        num_blocks,
+                        MaskType.CHANNEL_WISE,
+                        reverse_mask=False,
+                    ),
+                    CouplingLayer(
+                        4 * in_channels,
+                        2 * mid_channels,
+                        num_blocks,
+                        MaskType.CHANNEL_WISE,
+                        reverse_mask=True,
+                    ),
+                    CouplingLayer(
+                        4 * in_channels,
+                        2 * mid_channels,
+                        num_blocks,
+                        MaskType.CHANNEL_WISE,
+                        reverse_mask=False,
+                    ),
+                ]
+            )
+            self.next_block = _RealNVP(
+                scale_idx + 1, num_scales, 2 * in_channels, 2 * mid_channels, num_blocks
+            )
 
     def forward(self, x, sldj, reverse=False):
         if reverse:
