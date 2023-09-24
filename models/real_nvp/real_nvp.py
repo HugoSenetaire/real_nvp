@@ -33,7 +33,7 @@ class RealNVP(nn.Module):
         super(RealNVP, self).__init__()
         # Register data_constraint to pre-process images, not learnable
         self.register_buffer(
-            "data_constraint", torch.tensor([0.9], dtype=torch.float32)
+            "data_constraint", torch.tensor(1-1e-6, dtype=torch.float32)
         )
         self.to_pre_process = pre_process
 
